@@ -28,7 +28,7 @@ print(config)
 
 K = config["K"]
 n_hidden = config["n_hidden"]
-num_epochs = 1000  # config["num_epochs"]
+num_epochs = 100  # config["num_epochs"]
 tolerance = config["tolerance"]
 L_list = config["L_list"]
 save_MRR_MAP = config["save_MRR_MAP"]
@@ -87,6 +87,8 @@ learning_rate = 1e-3
 train_time_list = []
 mu_list = []
 sigma_list = []
+theta = 0.25
+resetting_counts = 0
 
 for t in range(len(data)):
     logger.debug("timestamp {}".format(t))
@@ -103,18 +105,39 @@ for t in range(len(data)):
     start = time.time()
     if t == 0:
         G2G = Graph2Gauss(n_hidden, L, D)
+    elif t == 1:
+        G2G = copy.deepcopy(G2G)
+        G2G_prev = copy.deepcopy(G2G)
+        if G2G.layers[0].weight.data.shape[0] < D:
+            dummy_input = InputLinear(G2G.layers[0].weight.data.shape[0])
+            dummy_output, G2G.layers[0] = wider(dummy_input, G2G.layers[0], D)
     else:
         G2G = copy.deepcopy(G2G)
-    if G2G.layers[0].weight.data.shape[0] < D:
-        dummy_input = InputLinear(G2G.layers[0].weight.data.shape[0])
-        dummy_output, G2G.layers[0] = wider(dummy_input, G2G.layers[0], D)
+        G2G_prev2 = copy.deepcopy(G2G_prev)
+        G2G_prev = copy.deepcopy(G2G)
+
+        add_net1 = copy.deepcopy(G2G_prev)
+        add_net2 = copy.deepcopy(G2G_prev2)
+        if G2G.layers[0].weight.data.shape[0] < D:
+            dummy_input = InputLinear(G2G.layers[0].weight.data.shape[0])
+            dummy_output, G2G.layers[0] = wider(dummy_input, G2G.layers[0], D)
+        if add_net1.layers[0].weight.data.shape[0] < D:
+            dummy_input = InputLinear(add_net1.layers[0].weight.data.shape[0])
+            dummy_output, add_net1.layers[0] = wider(dummy_input, add_net1.layers[0], D)
+        if add_net2.layers[0].weight.data.shape[0] < D:
+            dummy_input = InputLinear(add_net2.layers[0].weight.data.shape[0])
+            dummy_output, add_net2.layers[0] = wider(dummy_input, add_net2.layers[0], D)
+        for param1, param2, param3 in zip(
+            G2G.parameters(), add_net1.parameters(), add_net2.parameters()
+        ):
+            param1.data = theta * param2.data + (1 - theta) * param3.data
+
     G2G = G2G.to(device)
     optimizer = torch.optim.Adam(G2G.parameters(), lr=learning_rate)
     patience = 3
     wait = 0
     best = 0
 
-    # if t < len(data) - 1:
     if t < len(data):
         logger.debug("Training")
         G2G.train()
@@ -130,6 +153,7 @@ for t in range(len(data)):
             )
             if loss_s > 1e4:
                 logger.debug("Loss overflow, resetting G2G model")
+                resetting_counts = resetting_counts + 1
                 G2G.reset_parameters()
                 _, mu, sigma = G2G(X)
                 triplets, triplet_scale_terms = to_triplets(
@@ -140,7 +164,7 @@ for t in range(len(data)):
                 )
             loss_s.backward()
             optimizer.step()
-            if verbose and (epoch == 1 or epoch % 50 == 0):
+            if verbose and (epoch == 1 or epoch % 10 == 0):
                 val_auc, val_ap = Validate_onLinkPredScore(A, mu, sigma)
                 logger.debug(
                     "L: {}, epoch: {:3d}, loss: {:.4f}, val_auc: {:.4f}, val_ap: {:.4f}".format(
@@ -168,7 +192,11 @@ for t in range(len(data)):
     val_auc, val_ap = Validate_onLinkPredScore(A, mu, sigma)
     logger.debug("val_auc {:.4f}, val_ap: {:.4f}".format(val_auc, val_ap))
 
-
+print("Training finished!")
+print(
+    "G2G model resets %d times in %d time stamps during training."
+    % (resetting_counts, len(data))
+)
 if save_sigma_mu == True:
     if not os.path.exists(name + "/saved_embed"):
         os.makedirs(name + "/saved_embed")
