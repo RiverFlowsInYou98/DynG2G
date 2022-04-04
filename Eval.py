@@ -42,11 +42,11 @@ scale = False
 verbose = True
 
 data_name = "UCI"
-SLURM_ARRAY_JOB_ID = "4499654"
-SLURM_ARRAY_JOB_ID = "4499655"
-SLURM_ARRAY_JOB_ID = "4499656"
-SLURM_ARRAY_JOB_ID = "4499657"
-SLURM_ARRAY_JOB_ID = "4499658"
+SLURM_ARRAY_JOB_ID = "4770241"
+SLURM_ARRAY_JOB_ID = "4770242"
+SLURM_ARRAY_JOB_ID = "4770243"
+SLURM_ARRAY_JOB_ID = "4770244"
+SLURM_ARRAY_JOB_ID = "4770245"
 
 
 # SLURM_ARRAY_JOB_ID = "aproova"
@@ -64,7 +64,6 @@ logger.debug(str(config))
 device = check_if_gpu()
 logger.debug("The code will be running on {}.".format(device))
 
-L = 256
 if data_name == "SBM":
     data = Dataset_SBM("datasets/sbm_50t_1000n_adj.csv")
 elif data_name == "UCI":
@@ -76,9 +75,9 @@ elif data_name == "UCI":
     )
 
 print("Loading embeddings: ", end="")
-with open(name + "/saved_embed/mu" + str(L), "rb") as f:
+with open(name + "/saved_embed/mu256", "rb") as f:
     mu_list = pickle.load(f)
-with open(name + "/saved_embed/sigma" + str(L), "rb") as f:
+with open(name + "/saved_embed/sigma256", "rb") as f:
     sigma_list = pickle.load(f)
 
 # mu_list = mu_list[0][2:]
