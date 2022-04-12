@@ -28,7 +28,6 @@ print(config)
 
 K = config["K"]
 n_hidden = config["n_hidden"]
-num_epochs = 100  # config["num_epochs"]
 tolerance = config["tolerance"]
 L_list = config["L_list"]
 save_MRR_MAP = config["save_MRR_MAP"]
@@ -41,7 +40,7 @@ p_train = 1 - p_val - p_test
 scale = False
 verbose = True
 
-data_name = "UCI"
+data_name = "SBM"
 name = "Results/" + data_name + "_" + os.environ["SLURM_ARRAY_JOB_ID"] + "/"
 logger = init_logging_handler(name)
 logger.debug(str(config))
@@ -49,11 +48,13 @@ logger.debug(str(config))
 device = check_if_gpu()
 logger.debug("The code will be running on {}.".format(device))
 
-L = 256
-
 print("Dataset: " + str(data_name))
 if data_name == "SBM":
     data = Dataset_SBM("datasets/sbm_50t_1000n_adj.csv")
+    L = 64
+    num_epochs = 700
+    patience_init = 10
+
 elif data_name == "UCI":
     data = Dataset_UCI(
         (
@@ -61,9 +62,20 @@ elif data_name == "UCI":
             "opsahl-ucsocial/out.opsahl-ucsocial",
         )
     )
+    L = 256
+    num_epochs = 100
+    patience_init = 3
 
 # data.A_list = [data.A_list[0]] * len(data)
 # data.X_list = [data.X_list[0]] * len(data)
+
+
+learning_rate = 1e-3
+train_time_list = []
+mu_list = []
+sigma_list = []
+theta = 0.25
+resetting_counts = 0
 
 
 def Validate_onLinkPredScore(A, mu, sigma):
@@ -82,13 +94,6 @@ def Validate_onLinkPredScore(A, mu, sigma):
     )
     return val_auc, val_ap
 
-
-learning_rate = 1e-3
-train_time_list = []
-mu_list = []
-sigma_list = []
-theta = 0.25
-resetting_counts = 0
 
 for t in range(len(data)):
     logger.debug("timestamp {}".format(t))
@@ -134,7 +139,7 @@ for t in range(len(data)):
 
     G2G = G2G.to(device)
     optimizer = torch.optim.Adam(G2G.parameters(), lr=learning_rate)
-    patience = 3
+    patience = patience_init
     wait = 0
     best = 0
 

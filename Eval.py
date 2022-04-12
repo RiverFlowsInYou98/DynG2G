@@ -41,12 +41,12 @@ p_train = 1 - p_val - p_test
 scale = False
 verbose = True
 
-data_name = "UCI"
-SLURM_ARRAY_JOB_ID = "4770241"
-SLURM_ARRAY_JOB_ID = "4770242"
-SLURM_ARRAY_JOB_ID = "4770243"
-SLURM_ARRAY_JOB_ID = "4770244"
-SLURM_ARRAY_JOB_ID = "4770245"
+data_name = "SBM"
+# SLURM_ARRAY_JOB_ID = "4826858"
+# SLURM_ARRAY_JOB_ID = "4826859"
+# SLURM_ARRAY_JOB_ID = "4826860"
+# SLURM_ARRAY_JOB_ID = "4826861"
+SLURM_ARRAY_JOB_ID = "4826862"
 
 
 # SLURM_ARRAY_JOB_ID = "aproova"
@@ -74,16 +74,18 @@ elif data_name == "UCI":
         )
     )
 
+L = 64
+
 print("Loading embeddings: ", end="")
-with open(name + "/saved_embed/mu256", "rb") as f:
+with open(name + "/saved_embed/mu" + str(L), "rb") as f:
     mu_list = pickle.load(f)
-with open(name + "/saved_embed/sigma256", "rb") as f:
+with open(name + "/saved_embed/sigma" + str(L), "rb") as f:
     sigma_list = pickle.load(f)
 
 # mu_list = mu_list[0][2:]
 # sigma_list = sigma_list[0][2:]
 
-L = len(mu_list[0][0])
+assert L == len(mu_list[0][0])
 print("Embedding size: %d" % (L))
 
 
@@ -147,7 +149,7 @@ for t in range(len(data)):
     if t > 0 and t < p_train * len(data):
         logger.debug("Training")
         ones_num = A.nnz
-        zeroes_num = min((A.shape[0] - 1) ** 2 - A.nnz, 10 * A.shape[0])
+        zeroes_num = 100 * A.shape[0] # min((A.shape[0] - 1) ** 2 - A.nnz, 10 * A.shape[0])
         for epoch in range(1, num_epochs + 1):
             classifier.train()
             optim.zero_grad()
@@ -192,7 +194,7 @@ for t in range(len(data)):
         classifier.eval()
 
         ones_num = A.nnz
-        zeroes_num = min((A.shape[0] - 1) ** 2 - A.nnz, 10 * A.shape[0])
+        zeroes_num = 100 * A.shape[0] # min((A.shape[0] - 1) ** 2 - A.nnz, 10 * A.shape[0])
         val_edges, embd_input, labels = get_embed_labels(A, t - 1, ones_num, zeroes_num)
         probs_out = classifier(embd_input).squeeze()
 
