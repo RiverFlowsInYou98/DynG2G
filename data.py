@@ -59,7 +59,9 @@ class Dataset_SBM(torch.utils.data.Dataset):
                 max_size = size
             self.A_list.append(A)
             self.X_list.append(X)
-        print("loading finished! The dynamic graph has %d time stamps." %(self.__len__()))
+        print(
+            "loading finished! The dynamic graph has %d time stamps." % (self.__len__())
+        )
 
     def __len__(self):
         return len(self.A_list)
@@ -69,11 +71,12 @@ class Dataset_SBM(torch.utils.data.Dataset):
 
     def get_graph(self, edges, max_size):
         largest_index = np.max(edges)
-        num_nodes = largest_index + 1
+        smallest_index = 0
+        num_nodes = largest_index - smallest_index + 1
         size = np.maximum(max_size, num_nodes)
         A = np.zeros((size, size))
         for edge in edges:
-            A[int(edge[0]), int(edge[1])] = 1
+            A[int(edge[0] - smallest_index), int(edge[1] - smallest_index)] = 1
         A[range(len(A)), range(len(A))] = 0
         A = scipy.sparse.csr_matrix(A)
         X = A + scipy.sparse.eye(A.shape[0])
@@ -112,7 +115,9 @@ class Dataset_UCI(torch.utils.data.Dataset):
                 continue
             self.A_list.append(A)
             self.X_list.append(X)
-        print("loading finished! The dynamic graph has %d time stamps." %(self.__len__()))
+        print(
+            "loading finished! The dynamic graph has %d time stamps." % (self.__len__())
+        )
 
     def __len__(self):
         return len(self.A_list)
@@ -122,11 +127,58 @@ class Dataset_UCI(torch.utils.data.Dataset):
 
     def get_graph(self, edges, max_size):
         largest_index = np.max(edges)
-        num_nodes = largest_index + 1
+        smallest_index = 0
+        num_nodes = largest_index - smallest_index + 1
         size = np.maximum(max_size, num_nodes)
         A = np.zeros((size, size))
         for edge in edges:
-            A[int(edge[0]), int(edge[1])] = 1
+            A[int(edge[0] - smallest_index), int(edge[1] - smallest_index)] = 1
+        A[range(len(A)), range(len(A))] = 0
+        A = scipy.sparse.csr_matrix(A)
+        X = A + scipy.sparse.eye(A.shape[0])
+        X = ScipySparse2TorchSparse(X)
+        return A, X, size
+
+
+class Dataset_AS(torch.utils.data.Dataset):
+    def __init__(self, dir_path):
+        self.filename_list = [
+            os.path.join(dir_path, x) for x in os.listdir(dir_path) if is_compatible(x)
+        ]
+        self.filename_list.sort()
+        self.filename_list = self.filename_list[0:100]
+        self.A_list = []
+        self.X_list = []
+        max_size = 0
+        for t in range(len(self.filename_list)):
+            print("loading graph at time stamp %d" % (t))
+            filename = self.filename_list[t]
+            graph_table = pd.read_table(filename, skiprows=3)
+            edges_t = graph_table[["# FromNodeId", "ToNodeId"]].to_numpy()
+            A, X, size = self.get_graph(edges_t, max_size)
+            if size > max_size:
+                max_size = size
+
+            self.A_list.append(A)
+            self.X_list.append(X)
+        print(
+            "loading finished! The dynamic graph has %d time stamps." % (self.__len__())
+        )
+
+    def __len__(self):
+        return len(self.filename_list)
+
+    def __getitem__(self, idx):
+        return self.A_list[idx], self.X_list[idx]
+
+    def get_graph(self, edges, max_size):
+        largest_index = np.max(edges)
+        smallest_index = 1
+        num_nodes = largest_index - smallest_index + 1
+        size = np.maximum(max_size, num_nodes)
+        A = np.zeros((size, size))
+        for edge in edges:
+            A[int(edge[0] - smallest_index), int(edge[1] - smallest_index)] = 1
         A[range(len(A)), range(len(A))] = 0
         A = scipy.sparse.csr_matrix(A)
         X = A + scipy.sparse.eye(A.shape[0])
