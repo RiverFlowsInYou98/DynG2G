@@ -40,7 +40,7 @@ p_train = 1 - p_val - p_test
 scale = False
 verbose = True
 
-data_name = "SBM"
+data_name = "AS"
 name = "Results/" + data_name + "_" + os.environ["SLURM_ARRAY_JOB_ID"] + "/"
 logger = init_logging_handler(name)
 logger.debug(str(config))
@@ -54,7 +54,6 @@ if data_name == "SBM":
     L = 64
     num_epochs = 700
     patience_init = 10
-
 elif data_name == "UCI":
     data = Dataset_UCI(
         (
@@ -65,6 +64,13 @@ elif data_name == "UCI":
     L = 256
     num_epochs = 100
     patience_init = 3
+elif data_name == "AS":
+    # data = Dataset_AS("datasets/as_data")
+    with open("datasets/as_data/ASdata_class", "rb") as f:
+        data = pickle.load(f)
+    L = 64
+    num_epochs = 700
+    patience_init = 10
 
 # data.A_list = [data.A_list[0]] * len(data)
 # data.X_list = [data.X_list[0]] * len(data)
@@ -74,7 +80,7 @@ learning_rate = 1e-3
 train_time_list = []
 mu_list = []
 sigma_list = []
-theta = 0.25
+theta = 1
 resetting_counts = 0
 
 
@@ -99,6 +105,7 @@ for t in range(len(data)):
     logger.debug("timestamp {}".format(t))
     A, X = data[t]
     N, D = X.shape
+    print("N: %d, D: %d" %(N,D))
     hops = get_hops(A, K)
     scale_terms = {}
     for h in hops:
@@ -108,8 +115,10 @@ for t in range(len(data)):
             scale_terms[max(hops.keys()) + 1] = hops[1].shape[0] - hops[h].sum(1).A1
 
     start = time.time()
+    print("START")
     if t == 0:
         G2G = Graph2Gauss(n_hidden, L, D)
+        print("G2G CREATED")
     elif t == 1:
         G2G = copy.deepcopy(G2G)
         G2G_prev = copy.deepcopy(G2G)
