@@ -6,6 +6,18 @@ import tarfile
 from utils import *
 
 
+def is_compatible(filename):
+    return any(filename.endswith(extension) for extension in [".txt"])
+
+
+def cluster_negs_and_positives(ratings):
+    pos_indices = ratings > 0
+    neg_indices = ratings <= 0
+    ratings[pos_indices] = 1
+    ratings[neg_indices] = -1
+    return ratings
+
+
 class Namespace(object):
     """
     helps referencing object in a dictionary as dict.key instead of dict['key']
@@ -174,6 +186,80 @@ class Dataset_AS(torch.utils.data.Dataset):
     def get_graph(self, edges, max_size):
         largest_index = np.max(edges)
         smallest_index = 1
+        num_nodes = largest_index - smallest_index + 1
+        size = np.maximum(max_size, num_nodes)
+        A = np.zeros((size, size))
+        for edge in edges:
+            A[int(edge[0] - smallest_index), int(edge[1] - smallest_index)] = 1
+        A[range(len(A)), range(len(A))] = 0
+        A = scipy.sparse.csr_matrix(A)
+        X = A + scipy.sparse.eye(A.shape[0])
+        X = ScipySparse2TorchSparse(X)
+        return A, X, size
+
+
+class Dataset_BitCoin(torch.utils.data.Dataset):
+    def __init__(self, file_path):
+        self.file_path = file_path
+        self.A_list = []
+        self.X_list = []
+
+        graph_table = pd.read_csv(
+            "datasets/soc-sign-bitcoinotc.csv",
+            names=["FromNodeId", "ToNodeId", "Weight", "TimeStep"],
+        )
+        graph_tensor = torch.tensor(graph_table.values, dtype=torch.long)
+        ecols = Namespace({"FromNodeId": 0, "ToNodeId": 1, "Weight": 2, "TimeStep": 3})
+
+        edges = graph_tensor[:, [ecols.FromNodeId, ecols.ToNodeId]]
+        _, edges = edges.unique(return_inverse=True)
+        graph_tensor[:, [ecols.FromNodeId, ecols.ToNodeId]] = edges
+        timesteps = aggregate_by_time(graph_tensor[:, ecols.TimeStep], 1200000)
+        graph_tensor[:, ecols.TimeStep] = timesteps
+
+        graph_tensor[:, ecols.Weight] = cluster_negs_and_positives(
+            graph_tensor[:, ecols.Weight]
+        )
+
+        # add the reversed link to make the graph undirected
+        # graph_tensor = torch.cat(
+        #     [
+        #         graph_tensor,
+        #         graph_tensor[
+        #             :, [ecols.ToNodeId, ecols.FromNodeId, ecols.Weight, ecols.TimeStep]
+        #         ],
+        #     ]
+        # )
+
+        df = pd.DataFrame(graph_tensor.numpy())
+        df.columns = ["source", "target", "weight", "time"]
+
+        max_size = 0
+        for t in range(df["time"].max() + 1):
+            print("loading graph at time stamp %d" % (t))
+            df1 = df[df["time"] == t]
+            edges_t = df1[["source", "target"]].to_numpy()
+            A, X, size = self.get_graph(edges_t, max_size)
+            if size > max_size:
+                max_size = size
+            if A.nnz < 15 or A.shape[0] < 10:
+                print("time stamp %d discarded" % (t))
+                continue
+            self.A_list.append(A)
+            self.X_list.append(X)
+        print(
+            "loading finished! The dynamic graph has %d time stamps." % (self.__len__())
+        )
+
+    def __len__(self):
+        return len(self.A_list)
+
+    def __getitem__(self, idx):
+        return self.A_list[idx], self.X_list[idx]
+
+    def get_graph(self, edges, max_size):
+        largest_index = np.max(edges)
+        smallest_index = 0
         num_nodes = largest_index - smallest_index + 1
         size = np.maximum(max_size, num_nodes)
         A = np.zeros((size, size))
