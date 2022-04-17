@@ -4,9 +4,7 @@
 #SBATCH -n 4
 #SBATCH -c 1
 #SBATCH --mem=128G
-#SBATCH -p gpu
-#SBATCH -A gk-condo
-#SBATCH -C geforce3090
+#SBATCH -p a6000-gcondo --gres=gpu:1
 #SBATCH --gres=gpu:1
 #SBATCH -t 4-00:00:00
 #SBATCH -o Output_Gen-%A.out
