@@ -167,3 +167,15 @@ class Graph2Gauss(torch.nn.Module):
         for layer in self.layers:
             layer.reset_parameters()
 
+
+class Classifier(torch.nn.Module):
+    def __init__(self, L):
+        super(Classifier, self).__init__()
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(in_features=2 * L, out_features=L),
+            torch.nn.ReLU(),
+            torch.nn.Linear(in_features=L, out_features=1),
+        )
+
+    def forward(self, x):
+        return self.mlp(x)
