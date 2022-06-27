@@ -22,9 +22,10 @@ def init_logging_handler(folder_name):
 
     sh = logging.StreamHandler()
     fh = logging.FileHandler("{}/log_{}.log".format(folder_name, current_time))
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s \t%(message)s"
-    )
+    # formatter = logging.Formatter(
+    #     "%(asctime)s - %(name)s - %(levelname)s \t%(message)s"
+    # )
+    formatter = logging.Formatter("%(message)s")
     sh.setFormatter(formatter)
     fh.setFormatter(formatter)
 
