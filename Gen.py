@@ -71,6 +71,16 @@ elif data_name == "AS":
     L = 64
     num_epochs = 700
     patience_init = 10
+elif data_name == "BitCoin":
+    data = Dataset_BitCoin("datasets/soc-sign-bitcoinotc.csv")
+    L = 256
+    num_epochs = 700
+    patience_init = 10
+elif data_name == "RM":
+    data = Dataset_RM(("datasets/download.tsv.mit.tar.bz2", "mit/out.mit"))
+    L = 64
+    num_epochs = 700
+    patience_init = 10
 
 # data.A_list = [data.A_list[0]] * len(data)
 # data.X_list = [data.X_list[0]] * len(data)
@@ -80,32 +90,27 @@ learning_rate = 1e-3
 train_time_list = []
 mu_list = []
 sigma_list = []
-theta = 1
+theta = 0.25
 resetting_counts = 0
 
 
-def Validate_onLinkPredScore(A, mu, sigma):
-    """
-    use link prediction score to validate the embedding
-    """
-    L = mu.shape[1]
-    num_samples = min(1000, A.nnz)
-    val_edges = np.row_stack(
-        (sample_ones(A, num_samples), sample_zeros(A, num_samples))
-    )
-    neg_val_energy = -Energy_KL(mu, sigma, val_edges, L)
-    val_label = A[val_edges[:, 0], val_edges[:, 1]].A1
-    val_auc, val_ap = score_link_prediction(
-        val_label, neg_val_energy.cpu().detach().numpy()
-    )
-    return val_auc, val_ap
-
-
 for t in range(len(data)):
+    logger.debug("==============================================")
     logger.debug("timestamp {}".format(t))
     A, X = data[t]
     N, D = X.shape
-    print("N: %d, D: %d" %(N,D))
+
+    num_ones = min(1000, A.nnz)
+    num_zeros = min(1000, A.nnz)
+    val_ones = sample_ones(A, num_ones)
+    val_zeros = sample_zeros(A, num_zeros)
+    val_edges = np.row_stack((val_ones, val_zeros))
+    val_label = A[val_edges[:, 0], val_edges[:, 1]].A1
+
+    logger.debug("# vertices: %d; # nonzeros: %d" % (N, A.nnz))
+    logger.debug(
+        "# edges for validation: positive: %d; negative: %d" % (num_ones, num_zeros)
+    )
     hops = get_hops(A, K)
     scale_terms = {}
     for h in hops:
@@ -115,49 +120,60 @@ for t in range(len(data)):
             scale_terms[max(hops.keys()) + 1] = hops[1].shape[0] - hops[h].sum(1).A1
 
     start = time.time()
-    print("START")
-    if t == 0:
-        G2G = Graph2Gauss(n_hidden, L, D)
-        print("G2G CREATED")
-    elif t == 1:
-        G2G = copy.deepcopy(G2G)
-        G2G_prev = copy.deepcopy(G2G)
-        if G2G.layers[0].weight.data.shape[0] < D:
-            dummy_input = InputLinear(G2G.layers[0].weight.data.shape[0])
-            dummy_output, G2G.layers[0] = wider(dummy_input, G2G.layers[0], D)
-    else:
-        G2G = copy.deepcopy(G2G)
-        G2G_prev2 = copy.deepcopy(G2G_prev)
-        G2G_prev = copy.deepcopy(G2G)
 
-        add_net1 = copy.deepcopy(G2G_prev)
-        add_net2 = copy.deepcopy(G2G_prev2)
-        if G2G.layers[0].weight.data.shape[0] < D:
-            dummy_input = InputLinear(G2G.layers[0].weight.data.shape[0])
-            dummy_output, G2G.layers[0] = wider(dummy_input, G2G.layers[0], D)
-        if add_net1.layers[0].weight.data.shape[0] < D:
-            dummy_input = InputLinear(add_net1.layers[0].weight.data.shape[0])
-            dummy_output, add_net1.layers[0] = wider(dummy_input, add_net1.layers[0], D)
-        if add_net2.layers[0].weight.data.shape[0] < D:
-            dummy_input = InputLinear(add_net2.layers[0].weight.data.shape[0])
-            dummy_output, add_net2.layers[0] = wider(dummy_input, add_net2.layers[0], D)
-        for param1, param2, param3 in zip(
-            G2G.parameters(), add_net1.parameters(), add_net2.parameters()
-        ):
-            param1.data = theta * param2.data + (1 - theta) * param3.data
+    G2G = Graph2Gauss(n_hidden, L, D)
+    # if t == 0:
+    #     G2G = Graph2Gauss(n_hidden, L, D)
+    # elif t == 1:
+    #     G2G = copy.deepcopy(G2G)
+    #     G2G_prev = copy.deepcopy(G2G)
+    #     if G2G.layers[0].weight.data.shape[0] < D:
+    #         dummy_input = InputLinear(G2G.layers[0].weight.data.shape[0])
+    #         dummy_output, G2G.layers[0] = wider(dummy_input, G2G.layers[0], D)
+    # else:
+    #     G2G = copy.deepcopy(G2G)
+    #     G2G_prev2 = copy.deepcopy(G2G_prev)
+    #     G2G_prev = copy.deepcopy(G2G)
+
+    #     add_net1 = copy.deepcopy(G2G_prev)
+    #     add_net2 = copy.deepcopy(G2G_prev2)
+    #     if G2G.layers[0].weight.data.shape[0] < D:
+    #         dummy_input = InputLinear(G2G.layers[0].weight.data.shape[0])
+    #         dummy_output, G2G.layers[0] = wider(dummy_input, G2G.layers[0], D)
+    #     if add_net1.layers[0].weight.data.shape[0] < D:
+    #         dummy_input = InputLinear(add_net1.layers[0].weight.data.shape[0])
+    #         dummy_output, add_net1.layers[0] = wider(dummy_input, add_net1.layers[0], D)
+    #     if add_net2.layers[0].weight.data.shape[0] < D:
+    #         dummy_input = InputLinear(add_net2.layers[0].weight.data.shape[0])
+    #         dummy_output, add_net2.layers[0] = wider(dummy_input, add_net2.layers[0], D)
+    #     for param1, param2, param3 in zip(
+    #         G2G.parameters(), add_net1.parameters(), add_net2.parameters()
+    #     ):
+    #         param1.data = theta * param2.data + (1 - theta) * param3.data
 
     G2G = G2G.to(device)
     optimizer = torch.optim.Adam(G2G.parameters(), lr=learning_rate)
     patience = patience_init
-    wait = 0
-    best = 0
+    best_score = 0
+    best_epoch = 0
+    if not os.path.exists(name + "/models"):
+        os.makedirs(name + "/models")
 
-    if t < len(data):
-        logger.debug("Training")
+    logger.debug("Training")
+    for epoch in range(0, num_epochs + 1):
+        if verbose and (epoch == 1 or epoch % 10 == 0):
+            logger.debug("----------------------------------------------")
+            logger.debug("time stamp %d, L: %d, epoch: %3d" % (t, L, epoch))
         G2G.train()
-        for epoch in range(1, num_epochs + 1):
-            optimizer.zero_grad()
-            X = X.to(device)
+        optimizer.zero_grad()
+        X = X.to(device)
+        _, mu, sigma = G2G(X)
+        triplets, triplet_scale_terms = to_triplets(sample_all_hops(hops), scale_terms)
+        loss_s = build_loss(triplets, triplet_scale_terms, mu, sigma, L, scale=scale)
+        if loss_s > 1e4:
+            logger.debug("Loss overflow, resetting G2G model")
+            resetting_counts = resetting_counts + 1
+            G2G.reset_parameters()
             _, mu, sigma = G2G(X)
             triplets, triplet_scale_terms = to_triplets(
                 sample_all_hops(hops), scale_terms
@@ -165,46 +181,52 @@ for t in range(len(data)):
             loss_s = build_loss(
                 triplets, triplet_scale_terms, mu, sigma, L, scale=scale
             )
-            if loss_s > 1e4:
-                logger.debug("Loss overflow, resetting G2G model")
-                resetting_counts = resetting_counts + 1
-                G2G.reset_parameters()
-                _, mu, sigma = G2G(X)
-                triplets, triplet_scale_terms = to_triplets(
-                    sample_all_hops(hops), scale_terms
+        if verbose and (epoch == 1 or epoch % 10 == 0):
+            G2G.eval()
+            patience -= 1
+            neg_val_energy = -Energy_KL(mu, sigma, val_edges, L).cpu().detach().numpy()
+            val_auc, val_ap = score_link_prediction(val_label, neg_val_energy)
+            if val_auc + val_ap > best_score:
+                model_name = (
+                    name + "models/time" + str(t) + "epoch" + str(epoch) + ".pt"
                 )
-                loss_s = build_loss(
-                    triplets, triplet_scale_terms, mu, sigma, L, scale=scale
-                )
-            loss_s.backward()
-            optimizer.step()
-            if verbose and (epoch == 1 or epoch % 10 == 0):
-                val_auc, val_ap = Validate_onLinkPredScore(A, mu, sigma)
-                logger.debug(
-                    "L: {}, epoch: {:3d}, loss: {:.4f}, val_auc: {:.4f}, val_ap: {:.4f}".format(
-                        L, epoch, loss_s.item(), val_auc, val_ap
-                    )
-                )
-                wait += 1
-                if val_auc + val_ap > best:
-                    best = val_auc + val_ap
-                    wait = 0
-                if wait >= patience:
-                    logger.debug("L: {}, epoch: {:3d}: Early Stopping".format(L, epoch))
-                    break
-    else:
-        logger.debug("Testing")
-        G2G.eval()
-        X = X.to(device)
-        _, mu, sigma = G2G(X)
-
+                torch.save(G2G.state_dict(), model_name)
+                best_score = val_auc + val_ap
+                best_epoch = epoch
+                patience = patience_init
+            logger.debug(
+                "loss: %.4f, val_auc: %.4f, val_ap: %.4f"
+                % (loss_s.item(), val_auc, val_ap)
+            )
+            # logger.debug(
+            #     "patience: %d, best_epoch: %d, best_score: %.4f"
+            #     % (patience, best_epoch, best_score)
+            # )
+            if patience == 0 or abs(val_auc + val_ap - 2.0) < 1e-4:
+                logger.debug("L: {}, epoch: {:3d}: Early Stopping".format(L, epoch))
+                logger.debug("----------------------------------------------")
+                break
+        loss_s.backward()
+        optimizer.step()
     end = time.time()
+    logger.debug("Training G2G at time stamp %d costs %.2fs." % (t, end - start))
     train_time_list.append(end - start)
 
+    logger.debug("loading the best model from epoch %d..." % (best_epoch))
+    G2G.load_state_dict(
+        torch.load(name + "models/time" + str(t) + "epoch" + str(best_epoch) + ".pt")
+    )
+    G2G.eval()
+    _, mu, sigma = G2G(X)
+    neg_val_energy = -Energy_KL(mu, sigma, val_edges, L).cpu().detach().numpy()
+    val_auc, val_ap = score_link_prediction(val_label, neg_val_energy)
+    logger.debug("val_auc {:.4f}, val_ap: {:.4f}".format(val_auc, val_ap))
+    for root, dirs, files in os.walk(name + "models"):
+        for file in files:
+            os.remove(os.path.join(name + "models", file))
     mu_list.append(mu.cpu().detach().numpy())
     sigma_list.append(sigma.cpu().detach().numpy())
-    val_auc, val_ap = Validate_onLinkPredScore(A, mu, sigma)
-    logger.debug("val_auc {:.4f}, val_ap: {:.4f}".format(val_auc, val_ap))
+    logger.debug("----------------------------------------------")
 
 print("Training finished!")
 print(
