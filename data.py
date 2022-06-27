@@ -270,3 +270,64 @@ class Dataset_BitCoin(torch.utils.data.Dataset):
         X = A + scipy.sparse.eye(A.shape[0])
         X = ScipySparse2TorchSparse(X)
         return A, X, size
+
+
+class Dataset_RM(torch.utils.data.Dataset):
+    def __init__(self, file_tuple):
+        self.A_list = []
+        self.X_list = []
+        tar_archive = tarfile.open(file_tuple[0], "r:bz2")
+        data = load_data_from_tar(file_tuple[1], tar_archive, starting_line=2, sep=None)
+
+        cols = Namespace({"source": 0, "target": 1, "weight": 2, "time": 3})
+        data = data.long()
+        # first id should be 0 (they are already contiguous)
+        data[:, [cols.source, cols.target]] -= 1
+
+        # add edges in the other direction (symmetric)
+        # data = torch.cat(
+        #     [data, data[:, [cols.target, cols.source, cols.weight, cols.time]]], dim=0
+        # )
+
+        data[:, cols.time] = aggregate_by_time(data[:, cols.time], 222400)
+        idx = data[:, [cols.source, cols.target, cols.time]]
+        df = pd.DataFrame(idx.numpy())
+        df.columns = ["source", "target", "time"]
+
+        max_size = 0
+        for t in range(df["time"].max() + 1):
+            print("loading graph at time stamp %d" % (t))
+            df1 = df[df["time"] == t]
+            edges_t = df1[["source", "target"]].to_numpy()
+            A, X, size = self.get_graph(edges_t, max_size)
+            if size > max_size:
+                max_size = size
+            if A.nnz < 15 or A.shape[0] < 15:
+                print("time stamp %d discarded" % (t))
+                continue
+            self.A_list.append(A)
+            self.X_list.append(X)
+        print(
+            "loading finished! The dynamic graph has %d time stamps." % (self.__len__())
+        )
+
+    def __len__(self):
+        return len(self.A_list)
+
+    def __getitem__(self, idx):
+
+        return self.A_list[idx], self.X_list[idx]
+
+    def get_graph(self, edges, max_size):
+        largest_index = np.max(edges)
+        smallest_index = 0
+        num_nodes = largest_index - smallest_index + 1
+        size = np.maximum(max_size, num_nodes)
+        A = np.zeros((size, size))
+        for edge in edges:
+            A[int(edge[0] - smallest_index), int(edge[1] - smallest_index)] = 1
+        A[range(len(A)), range(len(A))] = 0
+        A = scipy.sparse.csr_matrix(A)
+        X = A + scipy.sparse.eye(A.shape[0])
+        X = ScipySparse2TorchSparse(X)
+        return A, X, size
