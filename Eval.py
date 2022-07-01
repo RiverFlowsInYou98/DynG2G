@@ -24,13 +24,7 @@ with open(ARGS.config_file, "r") as f:
 print("Loaded configuration file", ARGS.config_file)
 print(config)
 
-# K = config["K"]
-# n_hidden = config["n_hidden"]
-# num_epochs = config["num_epochs"]
-# tolerance = config["tolerance"]
-L_list = config["L_list"]
-save_MRR_MAP = config["save_MRR_MAP"]
-save_sigma_mu = config["save_sigma_mu"]
+
 if config["seed"] != None:
     torch.cuda.manual_seed_all(config["seed"])
 
@@ -41,12 +35,12 @@ p_train = 1 - p_val - p_test
 scale = False
 verbose = True
 
-data_name = "SBM"
-# SLURM_ARRAY_JOB_ID = "4826858"
-# SLURM_ARRAY_JOB_ID = "4826859"
-# SLURM_ARRAY_JOB_ID = "4826860"
-# SLURM_ARRAY_JOB_ID = "4826861"
-SLURM_ARRAY_JOB_ID = "4826862"
+data_name = "AS"
+SLURM_ARRAY_JOB_ID = "5044097"
+# SLURM_ARRAY_JOB_ID = "5043513"
+# SLURM_ARRAY_JOB_ID = "5043514"
+# SLURM_ARRAY_JOB_ID = "5043515"
+# SLURM_ARRAY_JOB_ID = "5043516"
 
 
 # SLURM_ARRAY_JOB_ID = "aproova"
@@ -64,6 +58,8 @@ logger.debug(str(config))
 device = check_if_gpu()
 logger.debug("The code will be running on {}.".format(device))
 
+L = 64
+
 if data_name == "SBM":
     data = Dataset_SBM("datasets/sbm_50t_1000n_adj.csv")
 elif data_name == "UCI":
@@ -73,8 +69,14 @@ elif data_name == "UCI":
             "opsahl-ucsocial/out.opsahl-ucsocial",
         )
     )
-
-L = 64
+elif data_name == "AS":
+    # data = Dataset_AS("datasets/as_data")
+    with open("datasets/as_data/ASdata_class", "rb") as f:
+        data = pickle.load(f)
+elif data_name == "BitCoin":
+    data = Dataset_BitCoin("datasets/soc-sign-bitcoinotc.csv")
+elif data_name == "RM":
+    data = Dataset_RM(("datasets/download.tsv.mit.tar.bz2", "mit/out.mit"))
 
 print("Loading embeddings: ", end="")
 with open(name + "/saved_embed/mu" + str(L), "rb") as f:
@@ -87,19 +89,6 @@ with open(name + "/saved_embed/sigma" + str(L), "rb") as f:
 
 assert L == len(mu_list[0][0])
 print("Embedding size: %d" % (L))
-
-
-class Classifier(torch.nn.Module):
-    def __init__(self, L):
-        super(Classifier, self).__init__()
-        self.mlp = torch.nn.Sequential(
-            torch.nn.Linear(in_features=2 * L, out_features=L),
-            torch.nn.ReLU(),
-            torch.nn.Linear(in_features=L, out_features=1),
-        )
-
-    def forward(self, x):
-        return self.mlp(x)
 
 
 def unison_shuffled_copies(a, b, seed):
@@ -149,7 +138,10 @@ for t in range(len(data)):
     if t > 0 and t < p_train * len(data):
         logger.debug("Training")
         ones_num = A.nnz
-        zeroes_num = 100 * A.shape[0] # min((A.shape[0] - 1) ** 2 - A.nnz, 10 * A.shape[0])
+        if data_name == "SBM":
+            zeroes_num = 100 * A.shape[0]
+        else:
+            zeroes_num = min((A.shape[0] - 1) ** 2 - A.nnz, 10 * A.shape[0])
         for epoch in range(1, num_epochs + 1):
             classifier.train()
             optim.zero_grad()
@@ -170,14 +162,8 @@ for t in range(len(data)):
             MRR = get_MRR(probs_out.cpu(), labels.cpu(), np.transpose(val_edges))
 
             logger.debug(
-                "L:{}, Epoch: {}, Timestep: {}, Loss: {:.4}, MAP: {:.4}, MRR: {:.4}".format(
-                    L,
-                    epoch,
-                    t,
-                    loss,
-                    MAP,
-                    MRR,
-                )
+                "L: %d, Epoch: %d, Timestep: %d, Loss: %.4f, MAP: %.4f, MRR: %.4f"
+                % (L, epoch, t, loss, MAP, MRR)
             )
             wait += 1
             if MAP > best_MAP:
@@ -194,7 +180,10 @@ for t in range(len(data)):
         classifier.eval()
 
         ones_num = A.nnz
-        zeroes_num = 100 * A.shape[0] # min((A.shape[0] - 1) ** 2 - A.nnz, 10 * A.shape[0])
+        if data_name == "SBM":
+            zeroes_num = 100 * A.shape[0]
+        else:
+            zeroes_num = min((A.shape[0] - 1) ** 2 - A.nnz, 50 * A.shape[0])
         val_edges, embd_input, labels = get_embed_labels(A, t - 1, ones_num, zeroes_num)
         probs_out = classifier(embd_input).squeeze()
 
